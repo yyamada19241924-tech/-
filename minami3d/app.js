@@ -173,6 +173,10 @@ $("chips").addEventListener("click", (e) => {
   updateNear();
 });
 
+// ===== 拡大・縮小 =====
+$("zoom-in-btn").addEventListener("click", () => map.zoomIn());
+$("zoom-out-btn").addEventListener("click", () => map.zoomOut());
+
 // ===== 3D・航空写真の切り替え =====
 $("tilt-btn").addEventListener("click", (e) => {
   const on = map.getPitch() < 10;
