@@ -99,7 +99,7 @@ const map = new maplibregl.Map({
   attributionControl: false,
 });
 // 出典は右下のボタンと重ならないよう左下に出す
-map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
+map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "お店: © Overture Maps Foundation" }), "bottom-left");
 map.touchPitch.enable(); // 2本指で上下になぞると傾く
 
 let photoOn = false;
@@ -318,7 +318,7 @@ function showShop(shop) {
     <p class="kind shop" style="--dot:${SHOP_COLOR[shop.group]}"><span class="dot"></span>${escapeHtml(shop.kind)}</p>
     <h2>${escapeHtml(shop.title)}</h2>
     ${dist}
-    <p class="sub">OpenStreetMapの登録情報(${SHOPS_DATA_DATE}時点)。閉店している場合があります</p>
+    <p class="sub">${shop.src === "osm" ? "OpenStreetMap" : "Overture Maps"}の情報(${SHOPS_DATA_DATE}取得)。閉店している場合があります</p>
     <div class="actions"><a class="btn" href="${route}" target="_blank" rel="noopener">Googleマップで徒歩ルート</a></div>`);
 }
 
