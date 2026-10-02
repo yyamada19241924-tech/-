@@ -1,4 +1,5 @@
 // ミナミ 現地リサーチマップ(3D)
+// 更新したら index.html の app.js?v= と style.css?v= の番号も上げる(スマホに古いファイルが残らないように)
 // 地図: MapLibre GL + OpenFreeMap(OpenStreetMap、APIキー不要)。航空写真は国土地理院。
 // 施設データは全体版と共通の ../data/minpaku.js。候補地はこのスマホの中(localStorage)にだけ保存する。
 
