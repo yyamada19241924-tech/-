@@ -306,8 +306,8 @@ $("add-btn").addEventListener("click", () => {
   openSheet(`
     <h2>候補地${candidates.length + 1}を追加</h2>
     <p class="sub">十字の位置 / 半径${NEAR_RADIUS}mの民泊 <b>${n}件</b></p>
-    <label class="field-label" for="cand-note">メモ(人通り・置けそうな場所・近くの自販機など)</label>
-    <textarea id="cand-note" rows="3" placeholder="例: 角のコインパーキング横。外国人グループ多い。飲料自販機2台あり"></textarea>
+    <label class="field-label" for="cand-note">メモ(人通り・周りの様子など)</label>
+    <textarea id="cand-note" rows="3" placeholder="例: 角のコインパーキング横。外国人グループ多い"></textarea>
     <div class="actions">
       <button type="button" id="cand-save" class="btn">保存</button>
     </div>`);
