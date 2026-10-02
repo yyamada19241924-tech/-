@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ミナミ 現地リサーチマップ</title>
+<meta name="description" content="難波・心斎橋・日本橋・大国町周辺の民泊・ゲストハウスを3D地図で見ながら、自販機の設置候補地を記録するツール">
+<meta name="theme-color" content="#d8461e">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map" class="map" aria-label="民泊・ゲストハウスの3D地図"></div>
+  <div class="crosshair" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="title-row">
+      <h1>ミナミ 現地リサーチ</h1>
+      <span id="near-count" class="near-count" aria-live="polite"></span>
+    </div>
+    <div id="chips" class="chips" role="group" aria-label="種別で絞り込み"></div>
+  </header>
+
+  <div class="side-btns">
+    <button id="follow-btn" class="round-btn" aria-pressed="false" aria-label="現在地を追いかける">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <button id="tilt-btn" class="round-btn text" aria-pressed="true" aria-label="3D表示の切り替え">3D</button>
+    <button id="photo-btn" class="round-btn text" aria-pressed="false" aria-label="航空写真の切り替え">写真</button>
+  </div>
+
+  <div class="bottom-bar">
+    <button id="list-btn" class="bar-btn">候補地 <span id="cand-count">0</span></button>
+    <button id="add-btn" class="bar-btn primary">＋ 十字の位置を候補地に</button>
+  </div>
+
+  <!-- 下から出るパネル(施設の詳細・候補地の追加・候補地一覧で使い回す) -->
+  <section id="sheet" class="sheet" hidden>
+    <button id="sheet-close" class="sheet-close" aria-label="閉じる">×</button>
+    <div id="sheet-body"></div>
+  </section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="../data/minpaku.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

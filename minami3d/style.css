@@ -1,0 +1,397 @@
+/* 現地で片手操作する前提: 地図を全画面、操作は親指が届く右下と下に集める */
+:root {
+  --bg: #f3f6fa;
+  --surface: #ffffff;
+  --text: #1c2430;
+  --text-sub: #5d6b7c;
+  --border: #d9e0e8;
+  --accent: #d8461e;
+  --accent-text: #ffffff;
+  --cand: #7b2fd0; /* 候補地の色(民泊の3色と被らない紫) */
+  --shadow: 0 4px 16px rgba(20, 35, 60, 0.18);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.map {
+  position: fixed;
+  inset: 0;
+}
+
+/* 画面中央の十字(候補地の追加・件数の基準) */
+.crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(var(--text), var(--text)) center / 2px 100% no-repeat,
+    linear-gradient(var(--text), var(--text)) center / 100% 2px no-repeat;
+  filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff);
+}
+
+/* ===== 上: タイトル・件数・種別 ===== */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  padding: calc(8px + var(--safe-t)) 12px 8px;
+  display: grid;
+  gap: 6px;
+  background: linear-gradient(rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.88));
+  box-shadow: 0 1px 8px rgba(20, 35, 60, 0.12);
+}
+
+.title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.near-count {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.8rem;
+}
+
+.chip[aria-pressed="false"] {
+  opacity: 0.45;
+}
+
+.chip .count {
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dot);
+  flex: none;
+}
+
+/* ===== 右: 現在地・3D・写真 ===== */
+.side-btns {
+  position: fixed;
+  right: 12px;
+  bottom: calc(110px + var(--safe-b)); /* 左下の出典表示と重ならない高さ */
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+}
+
+.round-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.round-btn.text {
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+
+.round-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ===== 下: 候補地ボタン ===== */
+.bottom-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + var(--safe-b));
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+}
+
+.bar-btn {
+  min-height: 56px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-weight: bold;
+}
+
+.bar-btn.primary {
+  background: var(--cand);
+  color: #fff;
+  font-size: 1rem;
+}
+
+#cand-count {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--cand);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 下から出るパネル ===== */
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  max-height: 60%;
+  overflow-y: auto;
+  padding: 18px 16px calc(18px + var(--safe-b));
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -4px 20px rgba(20, 35, 60, 0.2);
+}
+
+.sheet h2 {
+  margin: 0 40px 6px 0;
+  font-size: 1.1rem;
+  text-wrap: balance;
+}
+
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg);
+  font-size: 1.3rem;
+}
+
+.sub {
+  margin: 4px 0;
+  color: var(--text-sub);
+  font-size: 0.85rem;
+}
+
+.sub b {
+  color: var(--accent);
+}
+
+.kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  color: var(--text-sub);
+}
+
+.note {
+  margin: 8px 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--cand);
+  color: #fff;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.btn.ghost {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field-label {
+  display: block;
+  margin: 12px 0 4px;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px; /* iPhoneで入力時に勝手に拡大されないように */
+  resize: vertical;
+}
+
+.copy-area {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.cand-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.cand-row {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.cand-main {
+  display: grid;
+  min-width: 0;
+}
+
+.cand-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cand-no,
+.cand-pin {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--cand);
+  color: #fff;
+  font-weight: bold;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cand-pin {
+  border: 2px solid #fff;
+  box-shadow: var(--shadow);
+  padding: 0;
+}
+
+/* 現在地 */
+.here-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1a73e8;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(26, 115, 232, 0.25);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: calc(110px + var(--safe-t));
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: rgba(28, 36, 48, 0.92);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+/* 地図の出典表示を下のボタンに隠れない位置へ */
+.maplibregl-ctrl-bottom-left {
+  bottom: calc(76px + var(--safe-b));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
