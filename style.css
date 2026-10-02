@@ -171,36 +171,6 @@ a {
   white-space: nowrap;
 }
 
-/* 航空写真の上でも読めるよう、白文字に黒いふちどり */
-.place-label {
-  width: 0;
-  height: 0;
-}
-
-/* 外側の位置は Leaflet が transform で決めるので、中央寄せは内側の span で行う */
-.place-label span {
-  display: block;
-  width: max-content;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  font-weight: bold;
-  white-space: nowrap;
-  text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 6px rgba(0, 0, 0, 0.8);
-}
-
-.place-label.town {
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-}
-
-.place-label.station span {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(20, 30, 45, 0.78);
-  font-size: 0.78rem;
-  text-shadow: none;
-}
-
 .station-label {
   font-weight: bold;
   font-size: 0.85rem;
