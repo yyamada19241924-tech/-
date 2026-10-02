@@ -34,10 +34,11 @@ from pathlib import Path
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-# ミナミ 現地リサーチ(minami3d)の地図の移動範囲と同じ(南, 西, 北, 東)
-BBOX = (34.635, 135.465, 34.695, 135.54)
+# 民泊の範囲(13町+難波駅・大国町駅から500m)をちょうど囲む四角(南, 西, 北, 東)。
+# 北は長堀通、南は大国町、西はなにわ筋、東は堺筋の少し外まで。天王寺・上本町は入れない
+BBOX = (34.650, 135.4915, 34.679, 135.5115)
 MIN_CONFIDENCE = 0.6  # Overture の「実在しそう度」。低いものは閉店・誤登録が多い
-MIN_ITEMS = 300  # 極端に少なければ取得失敗とみなし、既存データを残す
+MIN_ITEMS = 200  # 極端に少なければ取得失敗とみなし、既存データを残す
 
 GROUP_LABEL = {
     "anime": "アニメ・キャラクター",
@@ -48,43 +49,88 @@ GROUP_LABEL = {
 }
 GROUP_ORDER = ["anime", "matcha", "wa", "shopping", "sweets"]
 
+# お店は「ミナミ版の民泊の範囲」に近いものだけ残す。範囲の定義は minami3d/app.js と同じ(変えるときは両方直す)
+AREA_TOWNS = [
+    "中央区島之内", "中央区日本橋", "中央区西心斎橋", "中央区東心斎橋", "中央区南船場",
+    "中央区千日前", "中央区道頓堀", "中央区難波", "中央区宗右衛門町", "中央区心斎橋筋",
+    "浪速区元町", "浪速区難波中",
+]
+AREA_STATIONS = [(34.666579, 135.499196, 500), (34.663663, 135.501775, 500), (34.656242, 135.497868, 500)]
+NEAR_AREA_M = 200  # 範囲内の民泊からこの距離までのお店を残す
+
+
+def load_area_points():
+    text = (DATA_DIR / "minpaku.js").read_text(encoding="utf-8")
+    data = json.loads(re.search(r"const MINPAKU_DATA = (\[.*?\]);", text, re.S).group(1))
+    return [
+        {"lat": d["lat"], "lon": d["lon"]} for d in data
+        if any(d["addr"].startswith(t) for t in AREA_TOWNS)
+        or any(distance({"lat": la, "lon": lo}, d) <= r for la, lo, r in AREA_STATIONS)
+    ]
+
+
 # ===== 店名の言葉 =====
+# 店名がこれに当てはまれば、カテゴリより優先してその分類に入れる(上の分類ほど優先)
 NAME_WORDS = {
     "anime": r"アニメ|anime|ポケモン|pok[eé]mon|サンリオ|sanrio|ハローキティ|hello ?kitty|ジブリ|どんぐり共和国|ワンピース|one ?piece|"
-             r"ジャンプ|jump ?shop|ちいかわ|すみっコ|リラックマ|カービィ|kirby|ガンダム|gundam|ガシャ|ガチャ|gacha|gashapon|カプセルトイ|"
+             r"ジャンプ ?ショップ|jump ?shop|ちいかわ|すみっコ|リラックマ|カービィ|kirby|ガンダム|gundam|ガシャ|ガチャ|\bgacha|gashapon|カプセルトイ|"
              r"アニメイト|animate|駿河屋|らしんばん|まんだらけ|mandarake|メロンブックス|とらのあな|ゲーマーズ|k-books|ボークス|volks|"
-             r"コトブキヤ|kotobukiya|フィギュア|figure|ホビー|hobby|トレカ|トレーディングカード|カードショップ|ドラゴンボール|鬼滅|コナン|"
+             r"コトブキヤ|kotobukiya|フィギュア|figure|トレカ|トレーディングカード|カードショップ|card ?shop|ドラゴンボール|鬼滅|コナン|"
              r"ハイキュー|キャラクター|任天堂|nintendo|カプコン|capcom|スクウェア・エニックス|square ?enix|バンダイ|bandai|タカラトミー|"
-             r"プリキュア|セーラームーン|ミッフィー|miffy|スヌーピー|snoopy|ディズニー|disney|マリオ|特撮|ウルトラマン|"
-             r"仮面ライダー|ゴジラ|godzilla|ヲタ|オタク|otaku|コスプレ|cosplay|メイドカフェ|メイド喫茶|maid ?cafe|ゲーム(?!.*(就労|支援))|スーパーポテト|"
-             r"ジョーシン.*(ホビー|キッズ|ゲーム)|ボーネルンド|キディランド|kiddy ?land",
+             r"プリキュア|セーラームーン|ミッフィー|miffy|スヌーピー|snoopy|ディズニー|disney|マリオ(?!ン)|特撮|ウルトラマン|"
+             r"仮面ライダー|ゴジラ(?!像)|godzilla|ヲタ|オタク|otaku|コスプレ|cosplay|メイドカフェ|メイド喫茶|maid ?cafe|"
+             r"ゲーム(?!.*(就労|支援|アカデミー|academy))|スーパーポテト|ジョーシン.*(ホビー|キッズ|ゲーム)|キディランド|kiddy ?land|"
+             r"しろたん|マザーガーデン|アランジアロンゾ|動漫|フルコンプ|nmb48|akb48|ハロー！プロジェクト|exile tribe|pop ?mart|bandai namco",
     "matcha": r"抹茶|matcha|宇治|茶寮|茶房|茶舗|日本茶|煎茶|ほうじ茶|玉露|茶屋本舗|伊藤久右衛門|中村藤吉|辻利|小山園|"
-              r"一保堂|福寿園|伊右衛門|nana'?s green tea|ナナズグリーンティー|green ?tea|japanese ?tea|お茶の|茶葉",
+              r"一保堂|福寿園|伊右衛門|nana'?s green tea|ナナズ・?グリーンティー|green ?tea|japanese ?tea|茶道",
     "wa": r"土産|みやげ|souvenir|和雑貨|手ぬぐい|てぬぐい|扇子|着物|きもの|kimono|浴衣|yukata|和傘|風呂敷|お箸|箸の|包丁|刃物|"
-          r"knife|knives|cutlery|一文字|食品サンプル|道具屋|民芸|民藝|伝統工芸|和紙|招き猫|日本刀|"
-          r"くいだおれ|大阪名物|japanese ?craft|crafts? of japan|和小物|がま口|印伝|漆|陶器|焼物|有田|九谷|今治",
-    "shopping": r"^(mega|メガ)?ドン・?キホーテ|^ドンキ|don ?quijote|ダイソー|daiso|3coins|スリーコインズ|セリア|seria|キャンドゥ|"
-                r"ロフト|東急ハンズ|^ハンズ|無印良品|muji|ビックカメラ|bic ?camera|ヨドバシ|ジョーシン|joshin|ラオックス|laox|"
-                r"ダイコクドラッグ|daikoku|マツモトキヨシ|マツキヨ|matsumoto ?kiyoshi|スギ薬局|スギドラッグ|ココカラ|cocokara|"
-                r"サンドラッグ|sun ?drug|コクミン|kokumin|ツルハ|ウエルシア|キリン堂|ドラッグイレブン|コスモス薬品|ドラッグストアコスモス|"
-                r"アカカベ|セガミ|トモズ|tomod'?s|@cosme|アットコスメ|"
-                # 百貨店は店名の先頭にあるときだけ(「ゴディバ 大丸心斎橋店」のようなテナントを百貨店扱いしない)
-                r"^(高島屋|髙島屋|takashimaya|大丸|daimaru|近鉄百貨店|阪急|阪神百貨店|なんばマルイ|心斎橋パルコ|parco)",
-    "sweets": r"和菓子|菓子|お菓子|せんべい|煎餅|おかき|饅頭|まんじゅう|大福|どら焼|羊羹|わらび餅|団子|だんご|chocolate|チョコレート|"
+          r"knife|knives|一文字|食品サンプル|道具屋|民芸|民藝|伝統工芸|和紙|招き猫|日本刀|人形本店|"
+          r"くいだおれ|大阪名物|なにわ名物|japanese ?craft|crafts? of japan|和小物|がま口|印伝|印傳|漆器|陶器|焼物|今治|昆布",
+    # ドラッグ・百均はチェーン名に当てはまる店だけ(「ディスカウント店」などのカテゴリだけでは入れない)
+    "shopping": r"^(mega|メガ)? ?ドン・?キホーテ|^ドンキ|don ?quijote|ダイソー|daiso|3coins|スリーコインズ|セリア|seria|キャンドゥ|"
+                r"^(なんば|天王寺mio)?ロフト$|^ロフト |東急ハンズ|^ハンズ|無印良品|^muji|ビックカメラ|bic ?camera|ジョーシン|joshin|ラオックス|laox|"
+                r"ダイコクドラッグ|daikoku ?drug|マツモトキヨシ|マツキヨ|matsumoto ?kiyoshi|スギ薬局|スギドラッグ|ココカラ|cocokara|"
+                r"サンドラッグ|^sun ?drug|コクミン|kokumin|ツルハ|ウエルシア|キリン堂|ドラッグイレブン|コスモス薬品|ドラッグストアコスモス|"
+                r"^アカカベ|セガミ|トモズ|tomod'?s|@cosme|アットコスメ|エディオン|^plaza$|^cou ?cou|"
+                # 百貨店は百貨店そのものの名前だけ(テナントや「高島屋前」バス停などは入れない)
+                r"^(大丸 ?心斎橋店( ?(本館|南館|北館))?|大丸心斎橋|髙?高?島屋( ?大阪店)?|大阪タカシマヤ|なんば高島屋|難波高島屋百貨|"
+                r"다카시마야백화점|なんばマルイ|0101 namba marui|心斎橋パルコ|心斎橋parco)$",
+    "sweets": r"和菓子|菓子|お菓子|せんべい|煎餅|おかき|あられ|饅頭|まんじゅう|大福|どら焼|羊羹|わらび餅|団子|だんご|chocolate|チョコレート|"
               r"パティスリー|patisserie|スイーツ|sweets|千鳥屋|鼓月|りくろー|551|蓬莱|ごかぼう|粟おこし|岩おこし",
 }
 NAME_RE = {g: re.compile(w, re.IGNORECASE) for g, w in NAME_WORDS.items()}
-# 抹茶っぽい言葉でもタピオカ・紅茶専門などは外す
-NOT_MATCHA = re.compile(r"タピオカ|bubble|ゴンチャ|gong ?cha|紅茶|black ?tea|ミルクティー|中国|台湾|アジアン|chinese|割烹", re.IGNORECASE)
-# 観光客向けでない店(コンビニ・業務用スーパー・名前が百貨店に似ている薬局など)
-NOT_TOURIST_SHOP = re.compile(r"ファミリーマート|ローソン|セブン-?イレブン|業務スーパー|大丸薬店|ビリサンドラッグ", re.IGNORECASE)
+# 抹茶っぽい言葉でもタピオカ・紅茶・中国茶などは外す
+NOT_MATCHA = re.compile(r"タピオカ|bubble|ゴンチャ|gong ?cha|紅茶|black ?tea|ミルクティー|中国|台湾|アジアン|chinese|割烹|営業部", re.IGNORECASE)
+
+# ===== 1件ずつ確認して見つけた、インバウンド向けのお土産と関係ない店(2026-10-02) =====
+# 店名に当てはまれば、どの分類にも入れない
+EXCLUDE_NAMES = re.compile(
+    r"ファミリーマート|ローソン|セブン-?イレブン|業務スーパー|スーパー玉出|大丸薬店|ビリサンドラッグ|"
+    # 店ではないもの・会社・学校
+    r"像$|高島屋.*前$|史料館|ミュージアム|時計サロン|東別館|リュミエール|ドコモ|コインランドリー|coin laundry|"
+    r"有限会社|株式会社|co\.? ?ltd|営業部|アカデミー|academy|就労|"
+    # アニメと関係ない趣味の店(手品・エアガン・ラジコン・鉄道模型・ダーツ・ミリタリー・ボードゲーム・PC・買取)
+    r"マジックショップ|magic ?shop|gun ?shop|gun ?mall|ガンモール|toy ?gun|ラジコン|鉄道模型|ポポンデッタ|ダーツ|darts|"
+    r"ミリタリー|military|ウォーハンマー|warhammer|ボードゲーム|board ?game|pcコンフル|ぱそまる|買取|大黒屋|daikokuya|"
+    r"トイザ[らラ]ス|ベビーザ[らラ]ス|グランパパ|マリオンクレープ|ロフトプラスワン|"
+    # お土産と関係ない雑貨・ブランド・チケット・花屋
+    r"apple|甲南チケット|チケット|hibiya-?kadan|日比谷花壇|はないち|phitsanulok|pamojah|アロハ|malaika|マライカ|"
+    r"ギャラリーレア|ビジネスレザー|occult|harry winston|christofle|cartier|カルティエ|ermanno|nail|ネイル|"
+    r"k-?pop|ソウルマート|セカンドストリート|2nd street|goldplaza|やまや|"
+    # 2回目の確認で見つけたもの(爬虫類店・劇場前の地名・中国茶チェーン・昆布屋・体育館・アパレル・卸など)
+    r"レプマート|劇場前|奈雪|松前屋|アリーナ|アリ－ナ|イベントスペース|ゲオモバイル|^r&m$|magnolia|junie moon|^cave$|"
+    r"^fott$|quotidienne|moss connect|クロス大阪|市田朝芳庵|arenot|エムズ・コレクション|unby|^daikoku$|"
+    # 店名の支店名が範囲外(位置データの誤り)
+    r"布施店",
+    re.IGNORECASE,
+)
 # 「花とギフト」の分類には花屋も入っているので、店名で外す
 FLORIST = re.compile(r"花|フラワー|フローリスト|園芸|flower|florist|fleur", re.IGNORECASE)
-# 店名だけで拾うと誤爆しやすい分類(会社・病院・学校など)は、店名マッチの対象から外す
+# 店名だけで拾うと誤爆しやすい分類(会社・病院・学校・駅など)は、店名マッチの対象から外す
 NOT_SHOP_CATEGORY = re.compile(r"company|service|office|agency|school|clinic|hospital|dentist|doctor|surgery|"
                                r"manufactur|wholesale|supplier|real_estate|bank|hotel|hostel|church|temple|shrine|"
                                r"parking|government|association|organization|lawyer|accountant|consultant|station|train|transport|bus_", re.IGNORECASE)
-# 飲食店は、抹茶(抹茶カフェ)とアニメ(キャラクターカフェ)以外では店名マッチの対象にしない(「串かつだるま」など)
+# 飲食店は、抹茶(抹茶カフェ)とアニメ(キャラクターカフェ・メイドカフェ)以外では店名マッチの対象にしない(「串かつだるま」など)
 FOOD_CATEGORY = re.compile(r"restaurant|bar$|_bar|pub|izakaya|food_court|cafe|coffee|diner|bistro|eatery|steakhouse|buffet", re.IGNORECASE)
 NAME_ALLOWED_FOR_FOOD = {"anime", "matcha"}
 
@@ -99,16 +145,10 @@ OVERTURE_CATEGORIES = {
     "flowers_and_gifts_store": ("wa", "ギフト・雑貨"),
     "duty_free_store": ("wa", "免税店"),
     "kitchen_supply_store": ("wa", "包丁・台所道具"),
-    "discount_store": ("shopping", "ディスカウント・百均"),
-    "department_store": ("shopping", "百貨店"),
-    "drugstore": ("shopping", "ドラッグストア"),
     "candy_store": ("sweets", "お菓子"),
     "japanese_confectionery_shop": ("sweets", "和菓子"),
     "dessert_shop": ("sweets", "スイーツ"),
 }
-# 薬局は調剤薬局が大半なので、チェーン名に当てはまるものだけ「ドラッグ」に入れる
-CHAIN_ONLY_CATEGORIES = {"pharmacy", "drugstore", "electronics_store", "cosmetics_and_fragrance_store"}
-
 OSM_SHOPS = {
     "anime": ("anime", "アニメグッズ"),
     "games": ("anime", "ゲーム"),
@@ -120,8 +160,6 @@ OSM_SHOPS = {
     "craft": ("wa", "工芸"),
     "kimono": ("wa", "着物"),
     "knives": ("wa", "包丁"),
-    "variety_store": ("shopping", "ディスカウント・百均"),
-    "department_store": ("shopping", "百貨店"),
     "tea": ("matcha", "お茶"),
     "confectionery": ("sweets", "お菓子"),
     "pastry": ("sweets", "洋菓子"),
@@ -130,7 +168,7 @@ SUB_LABEL = {
     "anime": "アニメ・キャラクター",
     "matcha": "抹茶・日本茶",
     "wa": "お土産・和雑貨",
-    "shopping": "ショッピング",
+    "shopping": "ドラッグ・ディスカウント・百貨店",
     "sweets": "お菓子",
 }
 
@@ -138,29 +176,22 @@ SUB_LABEL = {
 def classify(name, category, category_map):
     """店名とカテゴリから (分類, 表示名) を決める。当てはまらなければ None。"""
     name = name or ""
-    if NOT_TOURIST_SHOP.search(name):
+    category = category or ""
+    if EXCLUDE_NAMES.search(name):
         return None
     by_category = category_map.get(category)
-    named = None
-    if not NOT_SHOP_CATEGORY.search(category or ""):
+    # 店名の言葉はカテゴリより具体的なので優先する(抹茶スイーツ店→抹茶、ギフト分類のドンキ→ドラッグ・百均 など)
+    if not NOT_SHOP_CATEGORY.search(category):
         for g in GROUP_ORDER:
-            if FOOD_CATEGORY.search(category or "") and g not in NAME_ALLOWED_FOR_FOOD:
+            if FOOD_CATEGORY.search(category) and g not in NAME_ALLOWED_FOR_FOOD:
                 continue
             if NAME_RE[g].search(name) and not (g == "matcha" and NOT_MATCHA.search(name)):
-                named = g
-                break
-    # 店名で決まる分類を優先(抹茶スイーツ店はお菓子ではなく抹茶に入れる、など)。
-    # ただしカテゴリの方が優先順位が高ければカテゴリを使う
-    if named and (not by_category or GROUP_ORDER.index(named) <= GROUP_ORDER.index(by_category[0])):
-        kind = by_category[1] if by_category and by_category[0] == named else SUB_LABEL[named]
-        return named, kind
+                kind = by_category[1] if by_category and by_category[0] == g else SUB_LABEL[g]
+                return g, kind
     if by_category:
-        group, kind = by_category
-        if category in CHAIN_ONLY_CATEGORIES:
-            return None
         if category == "flowers_and_gifts_store" and FLORIST.search(name):
             return None
-        return group, kind
+        return by_category
     return None
 
 
@@ -195,7 +226,7 @@ def fetch_overture():
             continue
         category = (p.get("taxonomy") or {}).get("primary") or ""
         name = (p.get("names") or {}).get("primary")
-        hit = classify(name, category, OVERTURE_CATEGORIES)
+        hit = classify(name, category, OVERTURE_CATEGORIES) if name else None  # 名前のない店は地図で見分けられないので入れない
         if not hit:
             continue
         lon, lat = row["geometry"]["coordinates"]
@@ -232,12 +263,8 @@ def fetch_osm():
         if lat is None:
             continue
         name = tags.get("name") or tags.get("name:ja") or tags.get("name:en")
-        names = " ".join(v for k, v in tags.items() if k.startswith("name") or k == "brand")
         category = tags.get("shop") or ""
-        hit = classify(names, category, OSM_SHOPS)
-        # OSM のドラッグストア(chemist)はチェーン名に当てはまるものだけ
-        if not hit and category == "chemist" and NAME_RE["shopping"].search(names):
-            hit = ("shopping", "ドラッグストア")
+        hit = classify(name, category, OSM_SHOPS) if name else None
         if hit:
             items.append(make_item(lat, lon, hit[0], hit[1], name, "osm"))
     return items
@@ -257,8 +284,16 @@ def is_same(a, b):
 
 
 def merge(overture, osm):
-    extra = [o for o in osm if not any(is_same(x, o) for x in overture)]
-    items = overture + extra
+    # 同じ店が Overture 内で二重登録されていることもあるので、Overture 同士も重複を除く
+    unique = []
+    for x in overture:
+        if not any(is_same(u, x) for u in unique):
+            unique.append(x)
+    extra = []
+    for o in osm:
+        if not any(is_same(x, o) for x in unique + extra):
+            extra.append(o)
+    items = unique + extra
     items.sort(key=lambda x: (GROUP_ORDER.index(x["group"]), x["lat"], x["lon"]))
     return items, len(extra)
 
@@ -267,6 +302,13 @@ def main():
     overture = fetch_overture()
     osm = fetch_osm()
     items, osm_extra = merge(overture, osm)
+    area = load_area_points()
+    before = len(items)
+    # 緯度経度の粗いふるい(約200m)をかけてから距離を測る(1万件×数百件を全部測ると遅いので)
+    items = [x for x in items if any(
+        abs(x["lat"] - a["lat"]) < 0.002 and abs(x["lon"] - a["lon"]) < 0.0025 and distance(x, a) <= NEAR_AREA_M for a in area
+    )]
+    print(f"範囲外を除外: {before - len(items)}件")
     if len(items) < MIN_ITEMS:
         raise SystemExit(f"お店の件数が少なすぎます({len(items)}件)。既存データはそのままにします。")
     to_json = lambda d: json.dumps(d, ensure_ascii=False, separators=(",", ":"))
