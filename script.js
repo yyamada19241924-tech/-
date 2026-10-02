@@ -65,11 +65,48 @@ if (CFG.satellite) {
     maxNativeZoom: 18,
     attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>(シームレス空中写真)',
   }).addTo(map);
-  L.control.layers({ "航空写真": photoLayer, "地図": osmLayer }, null, { position: "bottomleft", collapsed: false }).addTo(map);
+  const overlays = {};
+  if (CFG.labels) overlays["駅名・町名"] = buildPlaceLabels().addTo(map);
+  L.control.layers({ "航空写真": photoLayer, "地図": osmLayer }, overlays, { position: "bottomleft", collapsed: false }).addTo(map);
 } else {
   osmLayer.addTo(map);
 }
 const markerLayer = L.layerGroup().addTo(map);
+
+// ===== 地名ラベル(航空写真には地名が無いので、駅名と町名を自前で重ねる) =====
+// 町名は施設の住所(「中央区島之内１丁目…」)から取り出し、その町の施設の中央値の位置に置く
+function townLabelPoints(minCount = 5) {
+  const groups = new Map();
+  ALL_ITEMS.forEach((item) => {
+    const m = item.addr.match(/^(.+?区)(.+?)(?=[0-9０-９]|[一二三四五六七八九十]+丁目|$)/);
+    if (!m) return;
+    const key = m[1] + m[2]; // 中央区日本橋と浪速区日本橋のような同名の町を分ける
+    if (!groups.has(key)) groups.set(key, { name: m[2], items: [] });
+    groups.get(key).items.push(item);
+  });
+  const median = (arr) => {
+    const v = [...arr].sort((a, b) => a - b);
+    return v[Math.floor(v.length / 2)];
+  };
+  return [...groups.values()]
+    .filter(({ items }) => items.length >= minCount)
+    .map(({ name, items }) => ({ name, lat: median(items.map((x) => x.lat)), lon: median(items.map((x) => x.lon)) }));
+}
+
+function buildPlaceLabels() {
+  map.createPane("labels").style.zIndex = 450; // ピン(canvas)より上、ポップアップより下
+  const group = L.layerGroup();
+  const label = (latlng, text, cls) =>
+    L.marker(latlng, {
+      pane: "labels",
+      interactive: false, // ラベルの下のピンや地図をタップできるようにする
+      icon: L.divIcon({ className: `place-label ${cls}`, html: `<span>${escapeHtml(text)}</span>`, iconSize: null }),
+    }).addTo(group);
+  townLabelPoints().forEach((t) => label([t.lat, t.lon], t.name, "town"));
+  const bounds = map.options.maxBounds || OSAKA_BOUNDS;
+  STATIONS.filter((st) => bounds.contains([st.lat, st.lon])).forEach((st) => label([st.lat, st.lon], `${st.name}駅`, "station"));
+  return group;
+}
 const hereLayer = L.layerGroup().addTo(map);
 const pickLayer = L.layerGroup().addTo(map);
 const stationLayer = L.layerGroup().addTo(map);
