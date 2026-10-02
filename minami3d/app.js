@@ -19,6 +19,9 @@ const START = { center: [135.5015, 34.6655], zoom: 15.5, pitch: 55, bearing: -17
 const NEAR_RADIUS = 200; // 「周辺の民泊件数」の半径(m)
 const TYPE_COLOR = { shinpou: "#2e9e4f", tokku: "#1e73d8", kani: "#d8461e" };
 const TYPE_ORDER = ["shinpou", "tokku", "kani"];
+// お土産系のお店(OpenStreetMap)。民泊の丸と見分けやすいよう、黒ふちの丸にする
+const SHOP_COLOR = { gift: "#e0a100", sweets: "#d6338f" };
+const SHOP_ORDER = ["gift", "sweets"];
 const STORAGE_KEY = "minami-research-candidates-v1";
 
 // ===== ユーティリティ =====
@@ -54,6 +57,20 @@ function inArea(d) {
 
 const ITEMS = MINPAKU_DATA.filter(inArea).map((d, i) => ({ ...d, id: i, title: d.name || MINPAKU_TYPE_LABEL[d.type] }));
 const activeTypes = new Set(TYPE_ORDER);
+
+const SHOPS = SHOPS_DATA.map((d, i) => ({ ...d, id: i, title: d.name || d.kind }));
+const activeShops = new Set(SHOP_ORDER);
+
+function shopsGeoJSON() {
+  return {
+    type: "FeatureCollection",
+    features: SHOPS.filter((x) => activeShops.has(x.group)).map((x) => ({
+      type: "Feature",
+      properties: { id: x.id, group: x.group },
+      geometry: { type: "Point", coordinates: [x.lon, x.lat] },
+    })),
+  };
+}
 
 function countNear(lat, lon, radius = NEAR_RADIUS) {
   return ITEMS.filter((x) => activeTypes.has(x.type) && distance(lat, lon, x.lat, x.lon) <= radius).length;
@@ -120,6 +137,20 @@ map.once("style.load", () => {
       "circle-pitch-alignment": "map",
     },
   });
+  // お土産系のお店のピン(民泊より上に重ねる)
+  map.addSource("shops", { type: "geojson", data: shopsGeoJSON() });
+  map.addLayer({
+    id: "shops",
+    type: "circle",
+    source: "shops",
+    paint: {
+      "circle-color": ["match", ["get", "group"], "gift", SHOP_COLOR.gift, SHOP_COLOR.sweets],
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 4, 16, 6, 18, 9],
+      "circle-stroke-color": "#2b2118",
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 17, 2],
+      "circle-pitch-alignment": "map",
+    },
+  });
   // 中心から半径200mの範囲(件数の対象)
   map.addSource("near", { type: "geojson", data: circleGeoJSON(START.center, NEAR_RADIUS) });
   map.addLayer({
@@ -130,8 +161,11 @@ map.once("style.load", () => {
   }, "items");
 
   map.on("click", "items", (e) => showItem(ITEMS[e.features[0].properties.id]));
-  map.on("mouseenter", "items", () => (map.getCanvas().style.cursor = "pointer"));
-  map.on("mouseleave", "items", () => (map.getCanvas().style.cursor = ""));
+  map.on("click", "shops", (e) => showShop(SHOPS[e.features[0].properties.id]));
+  ["items", "shops"].forEach((id) => {
+    map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
+    map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
+  });
 
   updateNear();
   renderCandidates();
@@ -162,11 +196,21 @@ function renderChips() {
   $("chips").innerHTML = TYPE_ORDER.map((t) => `
     <button type="button" class="chip" data-type="${t}" aria-pressed="${activeTypes.has(t)}" style="--dot:${TYPE_COLOR[t]}">
       <span class="dot"></span>${MINPAKU_TYPE_LABEL[t].replace(/\(.*\)/, "")}<span class="count">${counts[t]}</span>
+    </button>`).join("") + SHOP_ORDER.map((g) => `
+    <button type="button" class="chip shop" data-shop="${g}" aria-pressed="${activeShops.has(g)}" style="--dot:${SHOP_COLOR[g]}">
+      <span class="dot"></span>${SHOP_GROUP_LABEL[g]}<span class="count">${SHOPS.filter((x) => x.group === g).length}</span>
     </button>`).join("");
 }
 $("chips").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
+  if (chip.dataset.shop) {
+    const g = chip.dataset.shop;
+    activeShops.has(g) ? activeShops.delete(g) : activeShops.add(g);
+    chip.setAttribute("aria-pressed", String(activeShops.has(g)));
+    map.getSource("shops")?.setData(shopsGeoJSON());
+    return;
+  }
   const t = chip.dataset.type;
   activeTypes.has(t) ? activeTypes.delete(t) : activeTypes.add(t);
   chip.setAttribute("aria-pressed", String(activeTypes.has(t)));
@@ -264,6 +308,17 @@ function showItem(item) {
     <h2>${escapeHtml(item.title)}</h2>
     <p class="sub">${escapeHtml(item.addr)}</p>
     ${dist}
+    <div class="actions"><a class="btn" href="${route}" target="_blank" rel="noopener">Googleマップで徒歩ルート</a></div>`);
+}
+
+function showShop(shop) {
+  const dist = here ? `<p class="sub">現在地から ${distanceLabel(distance(here.lat, here.lon, shop.lat, shop.lon))}</p>` : "";
+  const route = `https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=${shop.lat},${shop.lon}`;
+  openSheet(`
+    <p class="kind shop" style="--dot:${SHOP_COLOR[shop.group]}"><span class="dot"></span>${escapeHtml(shop.kind)}</p>
+    <h2>${escapeHtml(shop.title)}</h2>
+    ${dist}
+    <p class="sub">OpenStreetMapの登録情報(${SHOPS_DATA_DATE}時点)。閉店している場合があります</p>
     <div class="actions"><a class="btn" href="${route}" target="_blank" rel="noopener">Googleマップで徒歩ルート</a></div>`);
 }
 
