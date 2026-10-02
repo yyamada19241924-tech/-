@@ -385,7 +385,7 @@ textarea {
 .toast {
   position: fixed;
   left: 50%;
-  top: calc(110px + var(--safe-t));
+  top: calc(150px + var(--safe-t)); /* 上の2段の絞り込みボタンの下 */
   transform: translateX(-50%);
   z-index: 6;
   max-width: calc(100% - 32px);

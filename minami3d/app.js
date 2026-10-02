@@ -19,9 +19,9 @@ const START = { center: [135.5015, 34.6655], zoom: 15.5, pitch: 55, bearing: -17
 const NEAR_RADIUS = 200; // 「周辺の民泊件数」の半径(m)
 const TYPE_COLOR = { shinpou: "#2e9e4f", tokku: "#1e73d8", kani: "#d8461e" };
 const TYPE_ORDER = ["shinpou", "tokku", "kani"];
-// お土産系のお店(OpenStreetMap)。民泊の丸と見分けやすいよう、黒ふちの丸にする
-const SHOP_COLOR = { gift: "#e0a100", sweets: "#d6338f" };
-const SHOP_ORDER = ["gift", "sweets"];
+// インバウンド向けのお店(../data/shops.js)。民泊の丸と見分けやすいよう、黒ふちの丸にする
+const SHOP_COLOR = { anime: "#e0408a", matcha: "#7fa31a", wa: "#d9a400", shopping: "#12a3b0", sweets: "#a0613a" };
+const SHOP_ORDER = SHOP_GROUP_ORDER;
 const STORAGE_KEY = "minami-research-candidates-v1";
 
 // ===== ユーティリティ =====
@@ -144,7 +144,7 @@ map.once("style.load", () => {
     type: "circle",
     source: "shops",
     paint: {
-      "circle-color": ["match", ["get", "group"], "gift", SHOP_COLOR.gift, SHOP_COLOR.sweets],
+      "circle-color": ["match", ["get", "group"], ...SHOP_ORDER.flatMap((g) => [g, SHOP_COLOR[g]]), "#888"],
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 4, 16, 6, 18, 9],
       "circle-stroke-color": "#2b2118",
       "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 17, 2],
@@ -196,12 +196,13 @@ function renderChips() {
   $("chips").innerHTML = TYPE_ORDER.map((t) => `
     <button type="button" class="chip" data-type="${t}" aria-pressed="${activeTypes.has(t)}" style="--dot:${TYPE_COLOR[t]}">
       <span class="dot"></span>${MINPAKU_TYPE_LABEL[t].replace(/\(.*\)/, "")}<span class="count">${counts[t]}</span>
-    </button>`).join("") + SHOP_ORDER.map((g) => `
+    </button>`).join("");
+  $("shop-chips").innerHTML = SHOP_ORDER.map((g) => `
     <button type="button" class="chip shop" data-shop="${g}" aria-pressed="${activeShops.has(g)}" style="--dot:${SHOP_COLOR[g]}">
       <span class="dot"></span>${SHOP_GROUP_LABEL[g]}<span class="count">${SHOPS.filter((x) => x.group === g).length}</span>
     </button>`).join("");
 }
-$("chips").addEventListener("click", (e) => {
+function onChipClick(e) {
   const chip = e.target.closest(".chip");
   if (!chip) return;
   if (chip.dataset.shop) {
@@ -216,7 +217,9 @@ $("chips").addEventListener("click", (e) => {
   chip.setAttribute("aria-pressed", String(activeTypes.has(t)));
   map.getSource("items")?.setData(itemsGeoJSON());
   updateNear();
-});
+}
+$("chips").addEventListener("click", onChipClick);
+$("shop-chips").addEventListener("click", onChipClick);
 
 // ===== 拡大・縮小 =====
 $("zoom-in-btn").addEventListener("click", () => map.zoomIn());
