@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ミナミ 民泊・ゲストハウスマップ</title>
+<meta name="description" content="難波・心斎橋・日本橋・大国町周辺の民泊(住宅宿泊事業・特区民泊)と簡易宿所(ゲストハウス)の場所を地図で確認できるツール">
+<meta name="theme-color" content="#d8461e">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <div class="app">
+    <div id="map" class="map" aria-label="民泊・ゲストハウスの地図"></div>
+
+    <div class="panel">
+      <div class="topbar">
+        <div class="brand">
+          <div>
+            <h1>ミナミ 民泊・ゲストハウスマップ</h1>
+            <p class="brand-sub"><span id="total-count"></span> / 大阪市公開データ <span id="data-date"></span>時点</p>
+          </div>
+        </div>
+
+        <form id="place-form" class="search" role="search">
+          <input id="place-input" type="search" placeholder="駅名・地名で移動(例: 難波)" aria-label="駅名・地名" autocomplete="off" aria-controls="suggest">
+          <button type="submit" aria-label="検索">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+        </form>
+        <ul id="suggest" class="suggest" hidden aria-label="駅の候補"></ul>
+
+        <div id="cat-chips" class="chips" role="group" aria-label="種別で絞り込み"></div>
+      </div>
+
+      <section id="sheet" class="sheet" aria-label="施設の一覧">
+        <button id="sheet-handle" class="sheet-handle" aria-expanded="false" aria-controls="sheet-body">
+          <span class="grip" aria-hidden="true"></span>
+          <span id="status" class="status" aria-live="polite">読み込み中...</span>
+        </button>
+        <div id="sheet-body" class="sheet-body">
+          <article id="detail" class="detail" hidden></article>
+          <ul id="result-list" class="result-list"></ul>
+          <p class="credit legend" id="legend">
+            <span><span class="legend-dot" style="--dot:#2e9e4f"></span>住宅宿泊事業(民泊新法)</span>
+            <span><span class="legend-dot" style="--dot:#1e73d8"></span>特区民泊</span>
+            <span><span class="legend-dot" style="--dot:#d8461e"></span>簡易宿所(旅館業)</span>
+          </p>
+          <p class="credit">
+            データ: 大阪市「旅館業・特区民泊・住宅宿泊事業の施設等一覧」(<a href="https://www.city.osaka.lg.jp/kenko/page/0000382418.html" target="_blank" rel="noopener">大阪市オープンデータ</a>, CC-BY4.0)。
+            大型ホテル・旅館は含めず、民泊(住宅宿泊事業・特区民泊)と簡易宿所(ゲストハウス寄り)だけを表示しています。
+            範囲: 心斎橋・長堀橋・日本橋・難波周辺の13町(島之内・日本橋・西心斎橋・東心斎橋・南船場・千日前・道頓堀・難波千日前・難波・宗右衛門町・心斎橋筋・浪速区元町・難波中)と、難波駅・大国町駅から半径500m。
+            航空写真: 国土地理院。<a href="../">大阪市全体の地図はこちら</a>
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <div class="fabs">
+      <button id="nearest-btn" class="fab fab-wide" aria-label="現在地から一番近い施設">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 21l9-18 9 18-9-4.5L3 21z" fill="currentColor"/></svg>
+        <span>一番近い施設</span>
+      </button>
+      <button id="locate-btn" class="fab" aria-label="現在地を表示">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="../data/minpaku.js"></script>
+  <script src="../data/stations.js"></script>
+  <script>
+    // ミナミ版の設定(script.js が読む)。範囲を変えるときはここだけ直す
+    window.MAP_CONFIG = {
+      area: {
+        towns: [
+          "中央区島之内", "中央区日本橋", "中央区西心斎橋", "中央区東心斎橋", "中央区南船場",
+          "中央区千日前", "中央区道頓堀", "中央区難波", "中央区宗右衛門町", "中央区心斎橋筋",
+          "浪速区元町", "浪速区難波中",
+        ],
+        stations: [
+          { name: "難波(御堂筋線)", lat: 34.666579, lon: 135.499196, radius: 500 },
+          { name: "難波(南海)", lat: 34.663663, lon: 135.501775, radius: 500 },
+          { name: "大国町", lat: 34.656242, lon: 135.497868, radius: 500 },
+        ],
+      },
+      satellite: true,
+      startView: { center: [34.6655, 135.5015], zoom: 15 },
+      maxBounds: [[34.64, 135.475], [34.69, 135.53]],
+      minZoom: 14,
+    };
+  </script>
+  <script src="../script.js"></script>
+</body>
+</html>

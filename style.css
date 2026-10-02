@@ -514,12 +514,12 @@ a {
 }
 
 /* 地図の色を薄くして、ピンが目立つようにする */
-.leaflet-tile-pane {
+.base-map {
   filter: saturate(0.3) brightness(1.04);
 }
 
 @media (prefers-color-scheme: dark) {
-  .leaflet-tile-pane {
+  .base-map {
     filter: invert(1) hue-rotate(180deg) saturate(0.3) brightness(0.85);
   }
 }

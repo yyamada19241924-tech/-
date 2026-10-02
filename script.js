@@ -1,10 +1,12 @@
 // ===== 設定 =====
+// エリア版(minami/ など)は、script.js を読む前に window.MAP_CONFIG を置いて範囲や地図を変える
+const CFG = window.MAP_CONFIG || {};
 const MAX_LIST_ITEMS = 200;
 const WALK_M_PER_MIN = 80; // 徒歩の目安(不動産表示と同じ 80m/分)
 
 // 大阪市の範囲(南西・北東)。地図の移動範囲と地名検索をここに絞る
 const OSAKA_BOUNDS = L.latLngBounds([34.586, 135.31], [34.769, 135.6]);
-const START_VIEW = { center: [34.6873, 135.5019], zoom: 14 }; // 難波・ミナミ周辺(インバウンド宿泊が多いエリア)
+const START_VIEW = CFG.startView || { center: [34.6873, 135.5019], zoom: 14 }; // 難波・ミナミ周辺(インバウンド宿泊が多いエリア)
 
 const TYPE_COLOR = { shinpou: "#2e9e4f", tokku: "#1e73d8", kani: "#d8461e" };
 const TYPE_ORDER = ["shinpou", "tokku", "kani"];
@@ -20,7 +22,15 @@ const chipsEl = $("cat-chips");
 const toastEl = $("toast");
 
 // ===== データ整形 =====
-const ALL_ITEMS = MINPAKU_DATA.map((d, i) => ({
+// エリア指定があれば、町名(住所の先頭)か駅からの距離で絞る
+function inArea(d) {
+  const area = CFG.area;
+  if (!area) return true;
+  if (area.towns.some((t) => d.addr.startsWith(t))) return true;
+  return area.stations.some((s) => L.latLng(s.lat, s.lon).distanceTo([d.lat, d.lon]) <= s.radius);
+}
+
+const ALL_ITEMS = MINPAKU_DATA.filter(inArea).map((d, i) => ({
   ...d,
   id: i,
   title: d.name || MINPAKU_TYPE_LABEL[d.type],
@@ -36,17 +46,29 @@ const markers = new Map();
 // ===== 地図 =====
 const map = L.map("map", {
   preferCanvas: true, // 1万件超のピンを軽く描くため、canvasで描画する
-  maxBounds: OSAKA_BOUNDS.pad(0.1),
-  minZoom: 12,
+  maxBounds: CFG.maxBounds ? L.latLngBounds(CFG.maxBounds) : OSAKA_BOUNDS.pad(0.1),
+  minZoom: CFG.minZoom || 12,
   zoomSnap: 0.25, // ズームを細かい刻みにして、拡大・縮小を滑らかにする
   zoomDelta: 0.5,
   wheelPxPerZoomLevel: 100, // ホイール操作の感度をなめらかさに合わせて調整
 }).setView(START_VIEW.center, START_VIEW.zoom);
 map.zoomControl.setPosition("bottomleft");
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
+  className: "base-map", // 色を薄くするのは通常の地図だけ(航空写真はそのまま)
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
+});
+if (CFG.satellite) {
+  // 国土地理院の航空写真(APIキー不要・出典表示で利用可)。写真はz18までなので、それ以上は拡大表示
+  const photoLayer = L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", {
+    maxZoom: 19,
+    maxNativeZoom: 18,
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>(シームレス空中写真)',
+  }).addTo(map);
+  L.control.layers({ "航空写真": photoLayer, "地図": osmLayer }, null, { position: "bottomleft", collapsed: false }).addTo(map);
+} else {
+  osmLayer.addTo(map);
+}
 const markerLayer = L.layerGroup().addTo(map);
 const hereLayer = L.layerGroup().addTo(map);
 const pickLayer = L.layerGroup().addTo(map);
